@@ -50,10 +50,7 @@ def filter_dataframe(df, age_groups, lens_categories, stores):
         filtered = filtered[filtered['age_group'].isin(age_groups)]
     
     if lens_categories and len(lens_categories) > 0:
-        filtered = filtered[
-            filtered['lens_category'].isin(lens_categories) | 
-            filtered['lens_category'].isna()
-        ]
+        filtered = filtered[filtered['lens_category'].isin(lens_categories)]
     
     if stores and len(stores) > 0:
         filtered = filtered[filtered['store_name'].isin(stores)]
