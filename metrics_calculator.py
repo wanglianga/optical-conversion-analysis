@@ -542,7 +542,7 @@ def get_lens_effectiveness_by_age(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def get_lens_effectiveness_by_prescription(df: pd.DataFrame) -> pd.DataFrame:
-    return get_lens_recommendation_effectiveness(df, group_by=['prescription_result'])
+    return get_lens_recommendation_effectiveness(df, group_by=['prescription_degree_band'])
 
 
 def get_lens_effectiveness_by_price_band(df: pd.DataFrame) -> pd.DataFrame:

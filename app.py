@@ -602,7 +602,7 @@ def render_lens_effect_tab(df):
         html.H4('按年龄段分析', className='mt-4 mb-3'),
         dcc.Graph(figure=create_lens_effectiveness_by_age(lens_by_age)),
         
-        html.H4('按处方类型分析', className='mt-4 mb-3'),
+        html.H4('按处方度数区间分析', className='mt-4 mb-3'),
         dcc.Graph(figure=create_lens_effectiveness_by_prescription(lens_by_prescript)),
         
         html.H4('按价格带分析', className='mt-4 mb-3'),
@@ -636,7 +636,7 @@ def create_detail_table(df, max_rows=200):
     display_cols = [
         'record_id', 'customer_id', 'customer_name', 'age', 'age_group',
         'exam_date', 'store_name', 'optometrist_name', 'channel',
-        'exam_items', 'has_prescription', 'prescription_result', 'sphere_degree',
+        'exam_items', 'has_prescription', 'prescription_result', 'sphere_degree', 'prescription_degree_band',
         'lens_type_recommended', 'lens_category', 'lens_subtype', 'price_band',
         'tried_on', 'quoted_price', 'deal_made', 'deal_price',
         'is_gift', 'is_return', 'has_after_sale_flag', 'after_sale_type',

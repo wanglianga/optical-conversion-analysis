@@ -723,12 +723,12 @@ def create_lens_effectiveness_by_age(df: pd.DataFrame):
 
 
 def create_lens_effectiveness_by_prescription(df: pd.DataFrame):
-    prescript_order = ['轻度近视', '中度近视', '高度近视', '远视', '散光', '老花', '正常视力']
+    degree_order = ['平光(0D)', '低度(0~3D)', '中度(3~6D)', '高度(6~10D)', '超高度(>10D)']
     df = df.copy()
-    available_prescripts = [p for p in prescript_order if p in df['prescription_result'].unique()]
-    df['prescription_result'] = pd.Categorical(df['prescription_result'], categories=available_prescripts, ordered=True)
-    df = df.sort_values('prescription_result')
-    return create_lens_effectiveness_by_dimension(df, 'prescription_result', '按处方类型')
+    available_degrees = [d for d in degree_order if d in df['prescription_degree_band'].unique()]
+    df['prescription_degree_band'] = pd.Categorical(df['prescription_degree_band'], categories=available_degrees, ordered=True)
+    df = df.sort_values('prescription_degree_band')
+    return create_lens_effectiveness_by_dimension(df, 'prescription_degree_band', '按处方度数区间')
 
 
 def create_lens_effectiveness_by_price_band(df: pd.DataFrame):

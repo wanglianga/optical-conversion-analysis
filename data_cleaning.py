@@ -8,12 +8,37 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
     df = _mark_multiple_visits(df)
     df = _mark_cross_store_purchases(df)
     df = _add_price_band(df)
+    df = _add_prescription_degree_band(df)
     df = _handle_missing_prescription(df)
     df = _handle_returns(df)
     df = _handle_gift_orders(df)
     df = _handle_after_sale_repairs(df)
     df = _add_attribution_markers(df)
     df = _add_clean_flags(df)
+    
+    return df
+
+
+def _add_prescription_degree_band(df: pd.DataFrame) -> pd.DataFrame:
+    def _get_band(degree):
+        if pd.isna(degree):
+            return None
+        abs_degree = abs(float(degree))
+        if abs_degree < 0.01:
+            return '平光(0D)'
+        elif abs_degree <= 3.0:
+            return '低度(0~3D)'
+        elif abs_degree <= 6.0:
+            return '中度(3~6D)'
+        elif abs_degree <= 10.0:
+            return '高度(6~10D)'
+        else:
+            return '超高度(>10D)'
+    
+    if 'sphere_degree' in df.columns:
+        df['prescription_degree_band'] = df['sphere_degree'].apply(_get_band)
+    else:
+        df['prescription_degree_band'] = None
     
     return df
 
