@@ -10,12 +10,20 @@ from metrics_calculator import (
     get_overall_metrics, get_conversion_funnel, get_store_metrics,
     get_optometrist_metrics, get_lens_upgrade_rate, get_myopia_control_acceptance,
     get_category_matrix, get_after_sale_correlation, get_age_group_metrics,
-    get_all_metric_definitions
+    get_all_metric_definitions,
+    get_attribution_store_metrics, get_attribution_optometrist_metrics,
+    get_cross_store_attribution_flow, get_attribution_conversion_comparison,
+    get_lens_subtype_overview, get_lens_effectiveness_by_age,
+    get_lens_effectiveness_by_prescription, get_lens_effectiveness_by_price_band,
 )
 from visualizations import (
     create_store_comparison_chart, create_optometrist_funnel, create_category_matrix,
     create_lens_upgrade_chart, create_myopia_control_chart, create_abnormal_orders_chart,
-    create_after_sale_correlation_chart, create_overall_funnel, create_age_group_chart
+    create_after_sale_correlation_chart, create_overall_funnel, create_age_group_chart,
+    create_attribution_comparison_chart, create_store_attribution_chart,
+    create_cross_store_flow_chart, create_channel_distribution_chart,
+    create_lens_subtype_overview_chart, create_lens_effectiveness_by_age,
+    create_lens_effectiveness_by_prescription, create_lens_effectiveness_by_price_band,
 )
 
 
@@ -41,6 +49,9 @@ df_raw = load_or_generate_data()
 AGE_GROUPS = ['0-12岁', '13-18岁', '19-30岁', '31-45岁', '46-60岁', '60岁以上']
 LENS_CATEGORIES = ['基础', '功能', '高端', '防控']
 STORES = sorted(df_raw['store_name'].unique().tolist())
+PRICE_BANDS = ['0-500元', '500-1000元', '1000-2000元', '2000-5000元', '5000元以上']
+LENS_SUBTYPES = sorted([x for x in df_raw['lens_subtype'].dropna().unique().tolist() if x])
+PRESCRIPTION_RESULTS = sorted([x for x in df_raw['prescription_result'].dropna().unique().tolist() if x])
 
 
 def filter_dataframe(df, age_groups, lens_categories, stores):
@@ -175,6 +186,8 @@ app.layout = dbc.Container([
         dcc.Tab(label='验光师分析', value='optometrist'),
         dcc.Tab(label='品类矩阵', value='category'),
         dcc.Tab(label='防控镜片分析', value='myopia'),
+        dcc.Tab(label='归因分析', value='attribution'),
+        dcc.Tab(label='镜片推荐效果', value='lens_effect'),
         dcc.Tab(label='异常订单', value='abnormal'),
         dcc.Tab(label='售后关联', value='aftersale'),
         dcc.Tab(label='指标定义', value='definitions'),
@@ -205,6 +218,10 @@ def render_content(tab, age_groups, lens_categories, stores):
         return render_category_tab(df)
     elif tab == 'myopia':
         return render_myopia_tab(df)
+    elif tab == 'attribution':
+        return render_attribution_tab(df)
+    elif tab == 'lens_effect':
+        return render_lens_effect_tab(df)
     elif tab == 'abnormal':
         return render_abnormal_tab(df)
     elif tab == 'aftersale':
@@ -476,22 +493,164 @@ def render_definitions_tab():
     ]
 
 
+def render_attribution_tab(df):
+    attr_comp_df, attr_summary = get_attribution_conversion_comparison(df)
+    store_attr_df = get_attribution_store_metrics(df)
+    opt_attr_df = get_attribution_optometrist_metrics(df)
+    flow_df = get_cross_store_attribution_flow(df)
+    
+    summary_cards = [
+        ('总验光数', attr_summary.get('总验光数', 0), 'primary'),
+        ('总成交数', attr_summary.get('总成交数', 0), 'success'),
+        ('跨店成交顾客', attr_summary.get('跨店成交顾客数', 0), 'warning'),
+        ('跨店占比(%)', f"{attr_summary.get('跨店成交占比(%)', 0)}%", 'info'),
+        ('线上补单顾客', attr_summary.get('线上补单顾客数', 0), 'secondary'),
+        ('平均成交周期(天)', attr_summary.get('平均成交周期(天)', 0), 'danger'),
+    ]
+    
+    card_row = dbc.Row([
+        dbc.Col(
+            dbc.Card(
+                dbc.CardBody([
+                    html.H6(label, className='card-subtitle mb-1 text-muted', style={'fontSize': '12px'}),
+                    html.H5(f'{value}', className='card-title text-center'),
+                ]),
+                color=color,
+                outline=True,
+                className='shadow-sm'
+            ),
+            width=2,
+            className='mb-3'
+        )
+        for label, value, color in summary_cards
+    ])
+    
+    return [
+        html.H4('归因分析概览', className='mb-3'),
+        card_row,
+        
+        html.H4('多归因口径对比', className='mt-4 mb-3'),
+        dcc.Graph(figure=create_attribution_comparison_chart(attr_comp_df, attr_summary)),
+        
+        dbc.Row([
+            dbc.Col([
+                html.H4('渠道分布分析', className='mb-3'),
+                dcc.Graph(figure=create_channel_distribution_chart(df))
+            ], width=6),
+            dbc.Col([
+                html.H4('跨店归因流向', className='mb-3'),
+                dcc.Graph(figure=create_cross_store_flow_chart(flow_df))
+            ], width=6),
+        ], className='mb-4'),
+        
+        html.H4('门店多维度归因分析', className='mt-4 mb-3'),
+        dcc.Graph(figure=create_store_attribution_chart(store_attr_df)),
+        
+        html.H4('门店归因明细指标', className='mt-4 mb-3'),
+        dash_table.DataTable(
+            data=store_attr_df.to_dict('records') if not store_attr_df.empty else [],
+            columns=[{'name': col, 'id': col} for col in store_attr_df.columns] if not store_attr_df.empty else [],
+            page_size=10,
+            style_table={'overflowX': 'auto'},
+            style_header={
+                'backgroundColor': 'rgb(230, 230, 230)',
+                'fontWeight': 'bold'
+            },
+            style_cell={
+                'textAlign': 'center',
+                'fontFamily': 'Microsoft YaHei, SimHei, sans-serif',
+                'fontSize': '12px'
+            },
+            sort_action='native',
+            filter_action='native',
+        ),
+        
+        html.H4('验光师归因明细指标', className='mt-4 mb-3'),
+        dash_table.DataTable(
+            data=opt_attr_df.to_dict('records') if not opt_attr_df.empty else [],
+            columns=[{'name': col, 'id': col} for col in opt_attr_df.columns] if not opt_attr_df.empty else [],
+            page_size=10,
+            style_table={'overflowX': 'auto'},
+            style_header={
+                'backgroundColor': 'rgb(230, 230, 230)',
+                'fontWeight': 'bold'
+            },
+            style_cell={
+                'textAlign': 'center',
+                'fontFamily': 'Microsoft YaHei, SimHei, sans-serif',
+                'fontSize': '12px'
+            },
+            sort_action='native',
+            filter_action='native',
+        ),
+        
+        html.H4('归因相关明细数据', className='mt-4 mb-3'),
+        create_detail_table(df),
+    ]
+
+
+def render_lens_effect_tab(df):
+    lens_overview = get_lens_subtype_overview(df)
+    lens_by_age = get_lens_effectiveness_by_age(df)
+    lens_by_prescript = get_lens_effectiveness_by_prescription(df)
+    lens_by_price = get_lens_effectiveness_by_price_band(df)
+    
+    return [
+        html.H4('镜片推荐效果总览', className='mb-3'),
+        dcc.Graph(figure=create_lens_subtype_overview_chart(lens_overview)),
+        
+        html.H4('按年龄段分析', className='mt-4 mb-3'),
+        dcc.Graph(figure=create_lens_effectiveness_by_age(lens_by_age)),
+        
+        html.H4('按处方类型分析', className='mt-4 mb-3'),
+        dcc.Graph(figure=create_lens_effectiveness_by_prescription(lens_by_prescript)),
+        
+        html.H4('按价格带分析', className='mt-4 mb-3'),
+        dcc.Graph(figure=create_lens_effectiveness_by_price_band(lens_by_price)),
+        
+        html.H4('镜片推荐效果明细指标（按镜片子类）', className='mt-4 mb-3'),
+        dash_table.DataTable(
+            data=lens_overview.to_dict('records') if not lens_overview.empty else [],
+            columns=[{'name': col, 'id': col} for col in lens_overview.columns] if not lens_overview.empty else [],
+            page_size=10,
+            style_table={'overflowX': 'auto'},
+            style_header={
+                'backgroundColor': 'rgb(230, 230, 230)',
+                'fontWeight': 'bold'
+            },
+            style_cell={
+                'textAlign': 'center',
+                'fontFamily': 'Microsoft YaHei, SimHei, sans-serif',
+                'fontSize': '12px'
+            },
+            sort_action='native',
+            filter_action='native',
+        ),
+        
+        html.H4('推荐效果明细数据', className='mt-4 mb-3'),
+        create_detail_table(df),
+    ]
+
+
 def create_detail_table(df, max_rows=200):
     display_cols = [
         'record_id', 'customer_id', 'customer_name', 'age', 'age_group',
-        'exam_date', 'store_name', 'optometrist_name',
-        'exam_items', 'has_prescription', 'prescription_result',
-        'lens_type_recommended', 'lens_category',
+        'exam_date', 'store_name', 'optometrist_name', 'channel',
+        'exam_items', 'has_prescription', 'prescription_result', 'sphere_degree',
+        'lens_type_recommended', 'lens_category', 'lens_subtype', 'price_band',
         'tried_on', 'quoted_price', 'deal_made', 'deal_price',
         'is_gift', 'is_return', 'has_after_sale_flag', 'after_sale_type',
-        'is_cross_store', 'is_abnormal_order', 'data_quality_issue'
+        'visit_number', 'is_first_visit', 'is_cross_store',
+        'attribution_first_touch_store', 'attribution_last_touch_store',
+        'is_abnormal_order', 'data_quality_issue'
     ]
     
     available_cols = [c for c in display_cols if c in df.columns]
     display_df = df[available_cols].head(max_rows).copy()
     
     for col in ['deal_made', 'tried_on', 'has_prescription', 'is_gift', 
-                'is_return', 'has_after_sale_flag', 'is_cross_store', 'is_abnormal_order']:
+                'is_return', 'has_after_sale_flag', 'is_cross_store', 
+                'is_abnormal_order', 'is_first_visit', 'is_online_replenish']:
         if col in display_df.columns:
             display_df[col] = display_df[col].map({True: '是', False: '否'})
     

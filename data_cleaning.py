@@ -7,11 +7,103 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
     
     df = _mark_multiple_visits(df)
     df = _mark_cross_store_purchases(df)
+    df = _add_price_band(df)
     df = _handle_missing_prescription(df)
     df = _handle_returns(df)
     df = _handle_gift_orders(df)
     df = _handle_after_sale_repairs(df)
+    df = _add_attribution_markers(df)
     df = _add_clean_flags(df)
+    
+    return df
+
+
+def _add_price_band(df: pd.DataFrame) -> pd.DataFrame:
+    if 'price_band' not in df.columns:
+        def _get_band(price):
+            if pd.isna(price):
+                return None
+            if price < 500:
+                return '0-500元'
+            elif price < 1000:
+                return '500-1000元'
+            elif price < 2000:
+                return '1000-2000元'
+            elif price < 5000:
+                return '2000-5000元'
+            else:
+                return '5000元以上'
+        
+        df['price_band'] = df['deal_price'].apply(_get_band)
+        mask = df['price_band'].isna() & df['quoted_price'].notna()
+        df.loc[mask, 'price_band'] = df.loc[mask, 'quoted_price'].apply(_get_band)
+    
+    return df
+
+
+def _add_attribution_markers(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df['exam_date_dt'] = pd.to_datetime(df['exam_date'])
+    
+    customer_groups = df.groupby('customer_id')
+    
+    first_visit_info = customer_groups.agg(
+        attr_first_visit_store_id=('store_id', 'first'),
+        attr_first_visit_store_name=('store_name', 'first'),
+        attr_first_visit_opt_id=('optometrist_id', 'first'),
+        attr_first_visit_opt_name=('optometrist_name', 'first'),
+        attr_first_visit_date=('exam_date_dt', 'min'),
+        attr_total_visits=('record_id', 'count'),
+    ).reset_index()
+    
+    deal_mask = df['effective_deal'] if 'effective_deal' in df.columns else df['deal_made']
+    deal_groups = df[deal_mask].groupby('customer_id')
+    first_deal_info = deal_groups.agg(
+        attr_first_deal_store_id=('store_id', 'first'),
+        attr_first_deal_store_name=('store_name', 'first'),
+        attr_first_deal_opt_id=('optometrist_id', 'first'),
+        attr_first_deal_opt_name=('optometrist_name', 'first'),
+        attr_first_deal_date=('exam_date_dt', 'min'),
+        attr_total_deals=('record_id', 'count'),
+    ).reset_index()
+    
+    last_deal_info = deal_groups.agg(
+        attr_last_deal_store_id=('store_id', 'last'),
+        attr_last_deal_store_name=('store_name', 'last'),
+        attr_last_deal_opt_id=('optometrist_id', 'last'),
+        attr_last_deal_opt_name=('optometrist_name', 'last'),
+        attr_last_deal_date=('exam_date_dt', 'max'),
+    ).reset_index()
+    
+    df = df.merge(first_visit_info, on='customer_id', how='left')
+    df = df.merge(first_deal_info, on='customer_id', how='left')
+    df = df.merge(last_deal_info, on='customer_id', how='left')
+    
+    df['is_first_visit'] = df['exam_date_dt'] == df['attr_first_visit_date']
+    df['is_first_deal'] = (df['exam_date_dt'] == df['attr_first_deal_date']) & df['deal_made']
+    df['is_last_deal'] = (df['exam_date_dt'] == df['attr_last_deal_date']) & df['deal_made']
+    
+    df['attribution_first_touch_store'] = df['attr_first_visit_store_name']
+    df['attribution_first_touch_opt'] = df['attr_first_visit_opt_name']
+    df['attribution_last_touch_store'] = df['attr_last_deal_store_name']
+    df['attribution_last_touch_opt'] = df['attr_last_deal_opt_name']
+    
+    df['is_exam_deal_same_store'] = df['attr_first_visit_store_id'] == df['attr_first_deal_store_id']
+    df['is_exam_deal_diff_store'] = ~df['is_exam_deal_same_store'] & df['attr_first_deal_store_id'].notna()
+    
+    df['days_to_first_deal'] = (df['attr_first_deal_date'] - df['attr_first_visit_date']).dt.days
+    
+    if 'is_online_replenish' not in df.columns:
+        df['is_online_replenish'] = False
+    
+    if 'channel' not in df.columns:
+        df['channel'] = '门店验光'
+        df.loc[df['is_online_replenish'], 'channel'] = '线上补单'
+        df.loc[(df['visit_number'] > 1) & ~df['is_online_replenish'], 'channel'] = '门店复购'
+    
+    df['has_online_replenish'] = customer_groups['is_online_replenish'].transform('any').values
+    
+    df.drop(columns=['exam_date_dt'], inplace=True, errors='ignore')
     
     return df
 
@@ -162,6 +254,19 @@ def get_cleaning_summary(df: pd.DataFrame) -> dict:
         '售后返修订单数': int(df['is_repair'].sum()),
         '负面售后订单数': int(df['is_negative_after_sale'].sum()),
     }
+    
+    if 'is_online_replenish' in df.columns:
+        summary['线上补单记录数'] = int(df['is_online_replenish'].sum())
+        summary['线上补单顾客数'] = int(df[df['is_online_replenish']]['customer_id'].nunique())
+    
+    if 'is_exam_deal_diff_store' in df.columns:
+        customers_with_deal = df[df['effective_deal']]['customer_id'].unique()
+        cross_store_deal = df[(df['is_exam_deal_diff_store']) & (df['customer_id'].isin(customers_with_deal))]['customer_id'].nunique()
+        summary['验光成交跨店顾客数'] = int(cross_store_deal)
+    
+    if 'days_to_first_deal' in df.columns:
+        avg_days = df['days_to_first_deal'].dropna().mean()
+        summary['验光到首次成交平均天数'] = round(avg_days, 1) if pd.notna(avg_days) else 0
     
     return summary
 

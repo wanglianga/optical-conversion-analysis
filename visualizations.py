@@ -364,3 +364,377 @@ def create_age_group_chart(age_metrics: pd.DataFrame):
     )
     
     return fig
+
+
+def create_attribution_comparison_chart(attribution_df: pd.DataFrame, summary: dict):
+    if attribution_df.empty:
+        return go.Figure().update_layout(title='暂无数据')
+    
+    fig = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=('各归因口径成交数对比', '各归因口径转化率对比(%)'),
+        specs=[[{'type': 'bar'}, {'type': 'bar'}]]
+    )
+    
+    colors = [COLOR_SCHEME['primary'], COLOR_SCHEME['success'], COLOR_SCHEME['warning'], 
+              COLOR_SCHEME['info'], COLOR_SCHEME['secondary']]
+    
+    fig.add_trace(
+        go.Bar(
+            x=attribution_df['归因口径'],
+            y=attribution_df['成交数'],
+            marker_color=colors[:len(attribution_df)],
+            text=attribution_df['成交数'],
+            textposition='auto',
+            name='成交数'
+        ),
+        row=1, col=1
+    )
+    
+    fig.add_trace(
+        go.Bar(
+            x=attribution_df['归因口径'],
+            y=attribution_df['转化率(%)'],
+            marker_color=colors[:len(attribution_df)],
+            text=attribution_df['转化率(%)'].apply(lambda x: f'{x}%'),
+            textposition='auto',
+            name='转化率(%)'
+        ),
+        row=1, col=2
+    )
+    
+    fig.update_layout(
+        height=500,
+        title_text='多归因口径对比分析',
+        title_x=0.5,
+        showlegend=False,
+        font=dict(family='Microsoft YaHei, SimHei, sans-serif'),
+    )
+    
+    return fig
+
+
+def create_store_attribution_chart(store_attr_df: pd.DataFrame):
+    if store_attr_df.empty:
+        return go.Figure().update_layout(title='暂无数据')
+    
+    fig = make_subplots(
+        rows=2, cols=2,
+        subplot_titles=('各门店不同归因口径成交数', '各门店不同归因口径转化率(%)',
+                        '各门店不同归因口径营收(元)', '归因口径对转化率的影响'),
+        vertical_spacing=0.15,
+        horizontal_spacing=0.1
+    )
+    
+    stores = store_attr_df['门店'].tolist()
+    
+    fig.add_trace(
+        go.Bar(x=stores, y=store_attr_df['门店直接成交数'], name='门店直接', marker_color=COLOR_SCHEME['primary']),
+        row=1, col=1
+    )
+    fig.add_trace(
+        go.Bar(x=stores, y=store_attr_df['首次触点成交数'], name='首次触点', marker_color=COLOR_SCHEME['success']),
+        row=1, col=1
+    )
+    fig.add_trace(
+        go.Bar(x=stores, y=store_attr_df['末次触点成交数'], name='末次触点', marker_color=COLOR_SCHEME['warning']),
+        row=1, col=1
+    )
+    
+    fig.add_trace(
+        go.Bar(x=stores, y=store_attr_df['门店直接转化率(%)'], name='门店直接', marker_color=COLOR_SCHEME['primary']),
+        row=1, col=2
+    )
+    fig.add_trace(
+        go.Bar(x=stores, y=store_attr_df['首次触点转化率(%)'], name='首次触点', marker_color=COLOR_SCHEME['success']),
+        row=1, col=2
+    )
+    fig.add_trace(
+        go.Bar(x=stores, y=store_attr_df['末次触点转化率(%)'], name='末次触点', marker_color=COLOR_SCHEME['warning']),
+        row=1, col=2
+    )
+    
+    fig.add_trace(
+        go.Bar(x=stores, y=store_attr_df['门店直接营收(元)'], name='门店直接', marker_color=COLOR_SCHEME['primary']),
+        row=2, col=1
+    )
+    fig.add_trace(
+        go.Bar(x=stores, y=store_attr_df['首次触点营收(元)'], name='首次触点', marker_color=COLOR_SCHEME['success']),
+        row=2, col=1
+    )
+    fig.add_trace(
+        go.Bar(x=stores, y=store_attr_df['末次触点营收(元)'], name='末次触点', marker_color=COLOR_SCHEME['warning']),
+        row=2, col=1
+    )
+    
+    impact_data = []
+    for _, row in store_attr_df.iterrows():
+        direct_rate = row['门店直接转化率(%)']
+        first_rate = row['首次触点转化率(%)']
+        last_rate = row['末次触点转化率(%)']
+        impact_data.append({
+            '门店': row['门店'],
+            '首次触点提升(%)': round(first_rate - direct_rate, 2),
+            '末次触点提升(%)': round(last_rate - direct_rate, 2),
+        })
+    impact_df = pd.DataFrame(impact_data)
+    
+    fig.add_trace(
+        go.Bar(x=impact_df['门店'], y=impact_df['首次触点提升(%)'], name='首次触点提升', marker_color=COLOR_SCHEME['success']),
+        row=2, col=2
+    )
+    fig.add_trace(
+        go.Bar(x=impact_df['门店'], y=impact_df['末次触点提升(%)'], name='末次触点提升', marker_color=COLOR_SCHEME['warning']),
+        row=2, col=2
+    )
+    
+    fig.update_layout(
+        height=700,
+        title_text='门店多维度归因分析',
+        title_x=0.5,
+        font=dict(family='Microsoft YaHei, SimHei, sans-serif'),
+        barmode='group',
+        legend=dict(orientation='h', yanchor='bottom', y=-0.15, xanchor='center', x=0.5)
+    )
+    
+    for i in range(1, 3):
+        for j in range(1, 3):
+            fig.update_xaxes(tickangle=30, row=i, col=j)
+    
+    return fig
+
+
+def create_cross_store_flow_chart(flow_df: pd.DataFrame):
+    if flow_df.empty:
+        return go.Figure().update_layout(title='暂无跨店归因数据')
+    
+    all_stores = sorted(set(flow_df['source'].tolist() + flow_df['target'].tolist()))
+    store_to_idx = {store: i for i, store in enumerate(all_stores)}
+    
+    source_indices = [store_to_idx[s] for s in flow_df['source']]
+    target_indices = [store_to_idx[t] for t in flow_df['target']]
+    values = flow_df['成交数'].tolist()
+    
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
+    node_colors = [colors[i % len(colors)] for i in range(len(all_stores))]
+    
+    fig = go.Figure(data=[go.Sankey(
+        node=dict(
+            pad=15,
+            thickness=20,
+            line=dict(color='black', width=0.5),
+            label=all_stores,
+            color=node_colors,
+        ),
+        link=dict(
+            source=source_indices,
+            target=target_indices,
+            value=values,
+            color='rgba(150, 150, 150, 0.4)',
+        )
+    )])
+    
+    fig.update_layout(
+        title_text='跨店归因流向图（首次验光门店 → 成交门店）',
+        title_x=0.5,
+        height=550,
+        font=dict(family='Microsoft YaHei, SimHei, sans-serif', size=12),
+    )
+    
+    return fig
+
+
+def create_channel_distribution_chart(df: pd.DataFrame):
+    valid = df[df['is_valid_record']]
+    deals = valid[valid['effective_deal']]
+    
+    if len(deals) == 0:
+        return go.Figure().update_layout(title='暂无数据')
+    
+    channel_stats = deals.groupby('channel').agg(
+        成交数=('record_id', 'count'),
+        营收=('effective_deal_price', 'sum'),
+        顾客数=('customer_id', 'nunique'),
+    ).reset_index()
+    
+    fig = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=('各渠道成交数分布', '各渠道营收分布'),
+        specs=[[{'type': 'pie'}, {'type': 'pie'}]]
+    )
+    
+    fig.add_trace(
+        go.Pie(
+            labels=channel_stats['channel'],
+            values=channel_stats['成交数'],
+            name='成交数',
+            textinfo='label+percent',
+        ),
+        row=1, col=1
+    )
+    
+    fig.add_trace(
+        go.Pie(
+            labels=channel_stats['channel'],
+            values=channel_stats['营收'],
+            name='营收',
+            textinfo='label+percent',
+        ),
+        row=1, col=2
+    )
+    
+    fig.update_layout(
+        height=500,
+        title_text='渠道分布分析（门店验光 / 线上补单 / 门店复购）',
+        title_x=0.5,
+        font=dict(family='Microsoft YaHei, SimHei, sans-serif'),
+    )
+    
+    return fig
+
+
+def create_lens_subtype_overview_chart(lens_df: pd.DataFrame):
+    if lens_df.empty:
+        return go.Figure().update_layout(title='暂无数据')
+    
+    fig = make_subplots(
+        rows=2, cols=2,
+        subplot_titles=('各镜片类型推荐率与接受率(%)', '各镜片类型退货率与售后率(%)',
+                        '各镜片类型总营收(元)', '各镜片类型平均成交价(元)'),
+        vertical_spacing=0.15,
+        horizontal_spacing=0.1
+    )
+    
+    subtypes = lens_df['镜片子类'].tolist()
+    
+    fig.add_trace(
+        go.Bar(x=subtypes, y=lens_df['推荐率(%)'], name='推荐率(%)', marker_color=COLOR_SCHEME['primary']),
+        row=1, col=1
+    )
+    fig.add_trace(
+        go.Bar(x=subtypes, y=lens_df['接受率(%)'], name='接受率(%)', marker_color=COLOR_SCHEME['success']),
+        row=1, col=1
+    )
+    
+    fig.add_trace(
+        go.Bar(x=subtypes, y=lens_df['退货率(%)'], name='退货率(%)', marker_color=COLOR_SCHEME['warning']),
+        row=1, col=2
+    )
+    fig.add_trace(
+        go.Bar(x=subtypes, y=lens_df['售后率(%)'], name='售后率(%)', marker_color=COLOR_SCHEME['danger'] if 'danger' in COLOR_SCHEME else '#d62728'),
+        row=1, col=2
+    )
+    
+    fig.add_trace(
+        go.Bar(x=subtypes, y=lens_df['总营收(元)'], name='总营收(元)', marker_color=COLOR_SCHEME['info']),
+        row=2, col=1
+    )
+    
+    fig.add_trace(
+        go.Bar(x=subtypes, y=lens_df['平均成交价(元)'], name='平均成交价(元)', marker_color=COLOR_SCHEME['secondary']),
+        row=2, col=2
+    )
+    
+    fig.update_layout(
+        height=650,
+        title_text='各类型镜片推荐效果总览',
+        title_x=0.5,
+        font=dict(family='Microsoft YaHei, SimHei, sans-serif'),
+        barmode='group',
+        legend=dict(orientation='h', yanchor='bottom', y=-0.2, xanchor='center', x=0.5)
+    )
+    
+    for i in range(1, 3):
+        for j in range(1, 3):
+            fig.update_xaxes(tickangle=30, row=i, col=j)
+    
+    return fig
+
+
+def create_lens_effectiveness_by_dimension(df: pd.DataFrame, dimension: str, title: str):
+    if df.empty:
+        return go.Figure().update_layout(title='暂无数据')
+    
+    subtypes = sorted(df['lens_subtype'].dropna().unique().tolist())
+    dimensions = sorted(df[dimension].dropna().unique().tolist())
+    
+    fig = make_subplots(
+        rows=2, cols=2,
+        subplot_titles=(f'{title} - 推荐接受率(%)', f'{title} - 退货率(%)',
+                        f'{title} - 售后率(%)', f'{title} - 平均成交价(元)'),
+        vertical_spacing=0.15,
+        horizontal_spacing=0.1
+    )
+    
+    colors = [COLOR_SCHEME.get('primary', '#1f77b4'), COLOR_SCHEME.get('success', '#2ca02c'),
+              COLOR_SCHEME.get('warning', '#ff7f0e'), COLOR_SCHEME.get('info', '#9467bd'),
+              COLOR_SCHEME.get('secondary', '#7f7f7f'), COLOR_SCHEME.get('防控', '#e377c2')]
+    
+    for i, subtype in enumerate(subtypes):
+        subtype_data = df[df['lens_subtype'] == subtype]
+        color = colors[i % len(colors)]
+        
+        fig.add_trace(
+            go.Bar(x=subtype_data[dimension], y=subtype_data['推荐接受率(%)'],
+                   name=subtype, marker_color=color, legendgroup=subtype),
+            row=1, col=1
+        )
+        
+        fig.add_trace(
+            go.Bar(x=subtype_data[dimension], y=subtype_data['退货率(%)'],
+                   name=subtype, marker_color=color, legendgroup=subtype, showlegend=False),
+            row=1, col=2
+        )
+        
+        fig.add_trace(
+            go.Bar(x=subtype_data[dimension], y=subtype_data['售后率(%)'],
+                   name=subtype, marker_color=color, legendgroup=subtype, showlegend=False),
+            row=2, col=1
+        )
+        
+        fig.add_trace(
+            go.Bar(x=subtype_data[dimension], y=subtype_data['平均成交价(元)'],
+                   name=subtype, marker_color=color, legendgroup=subtype, showlegend=False),
+            row=2, col=2
+        )
+    
+    fig.update_layout(
+        height=650,
+        title_text=f'镜片推荐效果 - {title}分析',
+        title_x=0.5,
+        font=dict(family='Microsoft YaHei, SimHei, sans-serif'),
+        barmode='group',
+        legend=dict(orientation='h', yanchor='bottom', y=-0.25, xanchor='center', x=0.5)
+    )
+    
+    for i in range(1, 3):
+        for j in range(1, 3):
+            fig.update_xaxes(tickangle=30, row=i, col=j)
+    
+    return fig
+
+
+def create_lens_effectiveness_by_age(df: pd.DataFrame):
+    age_order = ['0-12岁', '13-18岁', '19-30岁', '31-45岁', '46-60岁', '60岁以上']
+    df = df.copy()
+    df['age_group'] = pd.Categorical(df['age_group'], categories=age_order, ordered=True)
+    df = df.sort_values('age_group')
+    return create_lens_effectiveness_by_dimension(df, 'age_group', '按年龄段')
+
+
+def create_lens_effectiveness_by_prescription(df: pd.DataFrame):
+    prescript_order = ['轻度近视', '中度近视', '高度近视', '远视', '散光', '老花', '正常视力']
+    df = df.copy()
+    available_prescripts = [p for p in prescript_order if p in df['prescription_result'].unique()]
+    df['prescription_result'] = pd.Categorical(df['prescription_result'], categories=available_prescripts, ordered=True)
+    df = df.sort_values('prescription_result')
+    return create_lens_effectiveness_by_dimension(df, 'prescription_result', '按处方类型')
+
+
+def create_lens_effectiveness_by_price_band(df: pd.DataFrame):
+    price_order = ['0-500元', '500-1000元', '1000-2000元', '2000-5000元', '5000元以上']
+    df = df.copy()
+    available_bands = [b for b in price_order if b in df['price_band'].unique()]
+    df['price_band'] = pd.Categorical(df['price_band'], categories=available_bands, ordered=True)
+    df = df.sort_values('price_band')
+    return create_lens_effectiveness_by_dimension(df, 'price_band', '按价格带')

@@ -31,18 +31,25 @@ OPTOMETRISTS = [
 ]
 
 LENS_TYPES = [
-    {'lens_type': '单光镜片', 'lens_category': '基础', 'base_price': 300, 'is_myopia_control': False},
-    {'lens_type': '防蓝光镜片', 'lens_category': '功能', 'base_price': 680, 'is_myopia_control': False},
-    {'lens_type': '渐进多焦点镜片', 'lens_category': '高端', 'base_price': 1580, 'is_myopia_control': False},
-    {'lens_type': '角膜塑形镜(OK镜)', 'lens_category': '防控', 'base_price': 8800, 'is_myopia_control': True},
-    {'lens_type': '离焦框架镜片', 'lens_category': '防控', 'base_price': 3200, 'is_myopia_control': True},
-    {'lens_type': '渐变太阳镜片', 'lens_category': '功能', 'base_price': 980, 'is_myopia_control': False},
+    {'lens_type': '单光镜片', 'lens_category': '基础', 'base_price': 300, 'is_myopia_control': False, 'lens_subtype': '基础镜片'},
+    {'lens_type': '防蓝光镜片', 'lens_category': '功能', 'base_price': 680, 'is_myopia_control': False, 'lens_subtype': '防蓝光'},
+    {'lens_type': '渐进多焦点镜片', 'lens_category': '高端', 'base_price': 1580, 'is_myopia_control': False, 'lens_subtype': '渐进多焦点'},
+    {'lens_type': '双光镜片', 'lens_category': '功能', 'base_price': 880, 'is_myopia_control': False, 'lens_subtype': '多焦点'},
+    {'lens_type': '高折射镜片(1.67)', 'lens_category': '高端', 'base_price': 1280, 'is_myopia_control': False, 'lens_subtype': '高折射'},
+    {'lens_type': '高折射镜片(1.74)', 'lens_category': '高端', 'base_price': 2680, 'is_myopia_control': False, 'lens_subtype': '高折射'},
+    {'lens_type': '角膜塑形镜(OK镜)', 'lens_category': '防控', 'base_price': 8800, 'is_myopia_control': True, 'lens_subtype': '儿童控制'},
+    {'lens_type': '离焦框架镜片', 'lens_category': '防控', 'base_price': 3200, 'is_myopia_control': True, 'lens_subtype': '儿童控制'},
+    {'lens_type': '渐变太阳镜片', 'lens_category': '功能', 'base_price': 980, 'is_myopia_control': False, 'lens_subtype': '功能镜片'},
+    {'lens_type': '偏光镜片', 'lens_category': '功能', 'base_price': 780, 'is_myopia_control': False, 'lens_subtype': '功能镜片'},
 ]
 
 AGE_GROUPS = ['0-12岁', '13-18岁', '19-30岁', '31-45岁', '46-60岁', '60岁以上']
 EXAM_ITEMS = ['电脑验光', '主觉验光', '散瞳验光', '眼轴测量', '角膜地形图', '眼压测量', '眼底检查']
 PRESCRIPTION_RESULTS = ['轻度近视', '中度近视', '高度近视', '远视', '散光', '老花', '正常视力']
 AFTER_SALE_TYPES = ['镜片磨损更换', '镜架调整', '度数复查', '返修', '退货退款', '赠品补发', '投诉处理']
+PRICE_BANDS = ['0-500元', '500-1000元', '1000-2000元', '2000-5000元', '5000元以上']
+CHANNELS = ['门店验光', '线上补单', '门店复购']
+LENS_SUBTYPES = ['基础镜片', '防蓝光', '渐进多焦点', '多焦点', '高折射', '儿童控制', '功能镜片']
 
 
 def generate_customers(n=2000):
@@ -81,7 +88,51 @@ def generate_customers(n=2000):
     return pd.DataFrame(customers)
 
 
-def generate_records(customers_df, n_records=3500):
+def _generate_sphere_degree(prescription_result, age):
+    if prescription_result == '轻度近视':
+        return round(np.random.uniform(-3.0, -0.5), 2)
+    elif prescription_result == '中度近视':
+        return round(np.random.uniform(-6.0, -3.0), 2)
+    elif prescription_result == '高度近视':
+        return round(np.random.uniform(-12.0, -6.0), 2)
+    elif prescription_result == '远视':
+        return round(np.random.uniform(0.5, 4.0), 2)
+    elif prescription_result == '老花':
+        add_degree = round(np.random.uniform(0.75, 3.0), 2)
+        return add_degree
+    elif prescription_result == '散光':
+        return round(np.random.uniform(-2.0, -0.5), 2)
+    else:
+        return 0.0
+
+
+def _generate_cylinder_degree(prescription_result):
+    if prescription_result == '散光':
+        return round(np.random.uniform(-2.5, -0.5), 2)
+    elif prescription_result in ['轻度近视', '中度近视', '高度近视']:
+        if np.random.random() < 0.6:
+            return round(np.random.uniform(-1.5, -0.25), 2)
+        return 0.0
+    else:
+        return 0.0
+
+
+def _get_price_band(price):
+    if price is None or pd.isna(price):
+        return None
+    if price < 500:
+        return '0-500元'
+    elif price < 1000:
+        return '500-1000元'
+    elif price < 2000:
+        return '1000-2000元'
+    elif price < 5000:
+        return '2000-5000元'
+    else:
+        return '5000元以上'
+
+
+def generate_records(customers_df, n_records=3800):
     records = []
     customers = customers_df.to_dict('records')
     start_date = datetime(2024, 1, 1)
@@ -89,6 +140,8 @@ def generate_records(customers_df, n_records=3500):
     date_range = (end_date - start_date).days
     
     customer_visit_count = {}
+    customer_first_exam_store = {}
+    customer_first_exam_opt = {}
     
     for i in range(n_records):
         customer = random.choice(customers)
@@ -96,17 +149,57 @@ def generate_records(customers_df, n_records=3500):
         customer_visit_count[cid] = customer_visit_count.get(cid, 0) + 1
         visit_num = customer_visit_count[cid]
         
-        days_offset = np.random.randint(0, date_range)
-        exam_date = start_date + timedelta(days=days_offset)
-        
-        store = random.choice(STORES)
-        store_optometrists = [o for o in OPTOMETRISTS if o['store_id'] == store['store_id']]
-        opt = random.choice(store_optometrists)
+        if visit_num == 1:
+            days_offset = np.random.randint(0, date_range)
+            exam_date = start_date + timedelta(days=days_offset)
+            store = random.choice(STORES)
+            store_optometrists = [o for o in OPTOMETRISTS if o['store_id'] == store['store_id']]
+            opt = random.choice(store_optometrists)
+            customer_first_exam_store[cid] = store
+            customer_first_exam_opt[cid] = opt
+            channel = '门店验光'
+            is_online_replenish = False
+        else:
+            prev_date = start_date
+            prev_records = [r for r in records if r['customer_id'] == cid]
+            if prev_records:
+                prev_date = datetime.strptime(prev_records[-1]['exam_date'], '%Y-%m-%d')
+            
+            days_after_prev = np.random.randint(3, 180)
+            exam_date = prev_date + timedelta(days=days_after_prev)
+            if exam_date > end_date:
+                exam_date = end_date - timedelta(days=np.random.randint(1, 30))
+            
+            channel_rand = np.random.random()
+            if channel_rand < 0.15:
+                channel = '线上补单'
+                is_online_replenish = True
+                store = customer_first_exam_store[cid]
+                opt = customer_first_exam_opt[cid]
+            elif channel_rand < 0.35:
+                other_stores = [s for s in STORES if s['store_id'] != customer_first_exam_store[cid]['store_id']]
+                if other_stores:
+                    store = random.choice(other_stores)
+                    store_optometrists = [o for o in OPTOMETRISTS if o['store_id'] == store['store_id']]
+                    opt = random.choice(store_optometrists)
+                else:
+                    store = customer_first_exam_store[cid]
+                    opt = customer_first_exam_opt[cid]
+                channel = '门店复购'
+                is_online_replenish = False
+            else:
+                store = customer_first_exam_store[cid]
+                opt = customer_first_exam_opt[cid]
+                channel = '门店复购'
+                is_online_replenish = False
         
         exam_items_count = np.random.randint(2, 6)
         exam_items = random.sample(EXAM_ITEMS, exam_items_count)
+        if is_online_replenish:
+            exam_items_count = 1
+            exam_items = '线上复查'
         
-        has_prescription = np.random.random() > 0.08
+        has_prescription = np.random.random() > 0.08 or visit_num > 1
         
         if has_prescription:
             age = customer['age']
@@ -117,10 +210,14 @@ def generate_records(customers_df, n_records=3500):
             else:
                 prescript_probs = [0.25, 0.25, 0.1, 0.08, 0.2, 0.05, 0.07]
             prescription = np.random.choice(PRESCRIPTION_RESULTS, p=prescript_probs)
+            sphere_degree = _generate_sphere_degree(prescription, age)
+            cylinder_degree = _generate_cylinder_degree(prescription)
         else:
             prescription = None
+            sphere_degree = None
+            cylinder_degree = None
         
-        tried_on = np.random.random() > 0.15
+        tried_on = np.random.random() > 0.15 or is_online_replenish
         
         if prescription and prescription != '正常视力':
             quoted = True
@@ -130,6 +227,9 @@ def generate_records(customers_df, n_records=3500):
                 lens_accept_prob = 0.55
             else:
                 lens_accept_prob = 0.7 if lens['lens_category'] == '基础' else 0.45
+            
+            if is_online_replenish:
+                lens_accept_prob *= 1.1
             
             price_factor = np.random.normal(1.0, 0.15)
             quoted_price = max(lens['base_price'] * 0.7, lens['base_price'] * price_factor)
@@ -149,19 +249,24 @@ def generate_records(customers_df, n_records=3500):
                 if np.random.random() < 0.06:
                     is_returned = True
                 
-                repurchase = np.random.random() < 0.25 if visit_num == 1 else True
+                repurchase = visit_num > 1
             else:
                 deal_price = None
                 repurchase = False
+            
+            price_band = _get_price_band(deal_price if deal_made else quoted_price)
+            lens_subtype = lens.get('lens_subtype', None)
         else:
             quoted = False
-            lens = {'lens_type': None, 'lens_category': None, 'is_myopia_control': False}
+            lens = {'lens_type': None, 'lens_category': None, 'is_myopia_control': False, 'lens_subtype': None}
             quoted_price = None
             deal_made = False
             deal_price = None
             is_gift = False
             is_returned = False
             repurchase = False
+            price_band = None
+            lens_subtype = None
         
         has_after_sale = False
         after_sale_type = None
@@ -181,6 +286,8 @@ def generate_records(customers_df, n_records=3500):
             'gender': customer['gender'],
             'visit_number': visit_num,
             'exam_date': exam_date.strftime('%Y-%m-%d'),
+            'channel': channel,
+            'is_online_replenish': is_online_replenish,
             'store_id': store['store_id'],
             'store_name': store['store_name'],
             'region': store['region'],
@@ -188,18 +295,22 @@ def generate_records(customers_df, n_records=3500):
             'optometrist_name': opt['opt_name'],
             'opt_seniority': opt['seniority'],
             'opt_cert_level': opt['cert_level'],
-            'exam_items': '、'.join(exam_items),
+            'exam_items': '、'.join(exam_items) if isinstance(exam_items, list) else exam_items,
             'exam_items_count': exam_items_count,
             'has_prescription': has_prescription,
             'prescription_result': prescription,
+            'sphere_degree': sphere_degree,
+            'cylinder_degree': cylinder_degree,
             'lens_type_recommended': lens['lens_type'],
             'lens_category': lens['lens_category'],
+            'lens_subtype': lens_subtype,
             'is_myopia_control_lens': lens['is_myopia_control'],
             'tried_on': tried_on,
             'quoted': quoted,
             'quoted_price': quoted_price,
             'deal_made': deal_made,
             'deal_price': deal_price,
+            'price_band': price_band,
             'is_gift_order': is_gift,
             'is_returned': is_returned,
             'repurchase_customer': repurchase,
@@ -209,26 +320,6 @@ def generate_records(customers_df, n_records=3500):
         })
     
     df = pd.DataFrame(records)
-    
-    cross_store_customers = random.sample([c['customer_id'] for c in customers], 80)
-    for cid in cross_store_customers:
-        customer_records = df[df['customer_id'] == cid]
-        if len(customer_records) >= 2:
-            other_stores = [s for s in STORES if s['store_id'] != customer_records.iloc[0]['store_id']]
-            if other_stores:
-                other_store = random.choice(other_stores)
-                idx = customer_records.index[-1]
-                df.at[idx, 'store_id'] = other_store['store_id']
-                df.at[idx, 'store_name'] = other_store['store_name']
-                df.at[idx, 'region'] = other_store['region']
-                other_opts = [o for o in OPTOMETRISTS if o['store_id'] == other_store['store_id']]
-                if other_opts:
-                    other_opt = random.choice(other_opts)
-                    df.at[idx, 'optometrist_id'] = other_opt['opt_id']
-                    df.at[idx, 'optometrist_name'] = other_opt['opt_name']
-                    df.at[idx, 'opt_seniority'] = other_opt['seniority']
-                    df.at[idx, 'opt_cert_level'] = other_opt['cert_level']
-    
     return df
 
 
